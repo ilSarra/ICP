@@ -80,6 +80,23 @@ std::tuple<std::vector<size_t>, std::vector<size_t>, double> Registration::find_
   std::vector<size_t> source_indices;
   Eigen::Vector3d source_point;
   double rmse;
+
+  open3d::geometry::KDTreeFlann target_kdtree(target_);
+  
+  for (int i = 0; i < source_for_icp_.points_.size(); i++) {
+    std::vector<double> cur_distances;
+    std::vector<int> cur_indices;
+
+    target_kdtree.SearchKNN<Eigen::Vector3d>(source_for_icp_.points_[i], 1, cur_indices, cur_distances);
+
+    if (cur_distances[i] <= threshold) {
+      source_indices.push_back(i);
+      target_indices.push_back(cur_indices[0]);
+    }
+  }
+
+  rmse = compute_rmse();
+
   return {source_indices, target_indices, rmse};
 }
 
