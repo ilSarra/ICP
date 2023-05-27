@@ -13,6 +13,35 @@ struct PointDistance
   // WARNING: When dealing with the AutoDiffCostFunction template parameters,
   // pay attention to the order of the template parameters
   ////////////////////////////////////////////////////////////////////////////////////////////////////
+
+  PointDistance(Eigen::Vector3d s, Eigen::Vector3d t) : source(s), target(t) {}
+
+  template<typename T>
+  bool operator()(const T* const transformation, T* residuals) const {
+    T p[3];
+    p[0] = (T)(source.x);
+    p[1] = (T)(source.y);
+    p[2] = (T)(source.z);
+
+    ceres::AngleAxisRotatePoint(transformation, p, p);
+
+    p[0] += transformation[3];
+    p[1] += transformation[4];
+    p[2] += transformation[5];
+
+    *residuals = sqrt(
+      pow(p[0] - target[0], 2) +
+      pow(p[1] - target[1], 2) +
+      pow(p[2] - target[2], 2)
+    )
+  }
+
+  static ceres::CostFunction* Create(const Eigen::Vector3d& source, Eigen::Vector3d& target) {
+    return (new ceres::AutoDiffCostFunction<PointDistance, 1, 6>(new PointDistance(source, target)));
+  }
+
+  Eigen::Vector3d source;
+  Eigen::Vector3d target;
 };
 
 
