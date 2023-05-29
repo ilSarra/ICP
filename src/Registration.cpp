@@ -19,9 +19,10 @@ struct PointDistance
   template<typename T>
   bool operator()(const T* const transformation, T* residuals) const {
     T p[3];
-    p[0] = (T)(source.x);
-    p[1] = (T)(source.y);
-    p[2] = (T)(source.z);
+    
+    p[0] = (T)source[0];
+    p[1] = (T)source[1];
+    p[2] = (T)source[2];
 
     ceres::AngleAxisRotatePoint(transformation, p, p);
 
@@ -33,7 +34,9 @@ struct PointDistance
       pow(p[0] - target[0], 2) +
       pow(p[1] - target[1], 2) +
       pow(p[2] - target[2], 2)
-    )
+    );
+
+    return true;
   }
 
   static ceres::CostFunction* Create(const Eigen::Vector3d& source, Eigen::Vector3d& target) {
@@ -95,18 +98,25 @@ void Registration::execute_icp_registration(double threshold, int max_iteration,
   //Remember to update transformation_ class variable, you can use source_for_icp_ to store transformed 3d points.
   ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-  int iter_ = 0;
-  double prev_rmse_ = 0;
+  int iter = 0;
+  double prev_rmse = std::numeric_limits<double>::max();
+  double cur_rmse = Registration::compute_rmse();
 
-  while (iter_++ < max_iteration) {
+  std::cout << "--- PERFORMING ICP REGISTRATION ---" << std::endl;
+  std::cout << "- threshold = " << threshold << std::endl;
+  std::cout << "- max_iteration = " << max_iteration << std::endl;
+  std::cout << "- relative_rmse = " << relative_rmse << std::endl;
+  std::cout << "- mode = " << mode << std::endl;
+  std::cout << std::endl;
+
+  while (iter < max_iteration && (iter < 1 || prev_rmse - cur_rmse >= relative_rmse)) {
     Eigen::Matrix4d cur_transformation;
 
     std::vector<size_t> source_indices;
     std::vector<size_t> target_indices;
-    double cur_rmse;
 
     // C++11
-    tie(source_indices, target_indices, cur_rmse) = Registration::find_closest_point(threshold);
+    tie(source_indices, target_indices, prev_rmse) = Registration::find_closest_point(threshold);
 
     if (mode == "svd") {
       cur_transformation = Registration::get_svd_icp_transformation(source_indices, target_indices);
@@ -116,9 +126,20 @@ void Registration::execute_icp_registration(double threshold, int max_iteration,
       cur_transformation = Registration::get_lm_icp_registration(source_indices, target_indices);
     }
 
-    Registration::source_for_icp_ = Registration::source_for_icp_.transform(cur_transformation);
+    Registration::source_for_icp_ = Registration::source_for_icp_.Transform(cur_transformation);
     Registration::transformation_ = cur_transformation * Registration::transformation_;
+    cur_rmse = Registration::compute_rmse();
+
+    std::cout << "ITER: " << iter + 1 << std::endl;
+    std::cout << transformation_ << std::endl;
+    std::cout << "RMSE: " << cur_rmse << std::endl;
+    std::cout << std::endl;
+
+    ++iter;
   }
+
+  std::cout << "--- ICP REGISTRATION FINISHED ---" << std::endl;
+  // std::cout << "RMSE: " << Registration::compute_rmse() << std::endl;
 
   return;
 }
@@ -172,8 +193,8 @@ Eigen::Matrix4d Registration::get_svd_icp_transformation(std::vector<size_t> sou
 
   // Compute centroids
   for (int i = 0; i < source_indices.size(); i++) {
-    source_centroid += source_for_icp_.points[source_indices[i]];
-    target_centroid += target_.points[target_indices[i]]
+    source_centroid += source_for_icp_.points_[source_indices[i]];
+    target_centroid += target_.points_[target_indices[i]];
   }
 
   source_centroid /= source_indices.size();
@@ -181,8 +202,8 @@ Eigen::Matrix4d Registration::get_svd_icp_transformation(std::vector<size_t> sou
 
   // Compute cross-covariance matrix C
   for (int i = 0; i < source_indices.size(); i++) {
-    Eigen::Vector3d cur_source = source_for_icp_[source_indices[i]];
-    Eigen::Vector3d cur_target = target_[target_indices[i]];
+    Eigen::Vector3d cur_source = source_for_icp_.points_[source_indices[i]];
+    Eigen::Vector3d cur_target = target_.points_[target_indices[i]];
     
     Eigen::Matrix3d tmp_mul = (cur_source - source_centroid) * (cur_target - target_centroid).transpose();
     C += tmp_mul;
@@ -191,7 +212,8 @@ Eigen::Matrix4d Registration::get_svd_icp_transformation(std::vector<size_t> sou
   C /= source_indices.size();
 
   // Compute SVD
-  Eigen::JacobiSVD<Eigen::Matrix3d,  Eigen::DecompositionOptions::ComputeFullU | Eigen::DecompositionOptions::ComputeFullV> svd(C);
+  Eigen::JacobiSVD<Eigen::Matrix3d> svd(C, Eigen::DecompositionOptions::ComputeFullU | Eigen::DecompositionOptions::ComputeFullV);
+
   Eigen::Matrix3d U = svd.matrixU();
   Eigen::Matrix3d V = svd.matrixV();
 
