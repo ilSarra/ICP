@@ -10,8 +10,8 @@
             "request": "launch",
             "program": "${workspaceFolder}/build/registration",
             "args": [
-                "../data/bunny/source.ply",
-                "../data/bunny/target.ply",
+                "../data/vase/source.ply",
+                "../data/vase/target.ply",
                 "svd"
             ],
             "stopAtEntry": false,

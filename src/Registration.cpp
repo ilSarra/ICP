@@ -109,7 +109,7 @@ void Registration::execute_icp_registration(double threshold, int max_iteration,
   std::cout << "- mode = " << mode << std::endl;
   std::cout << std::endl;
 
-  while (iter < max_iteration && (iter < 1 || prev_rmse - cur_rmse >= relative_rmse)) {
+  while (iter < max_iteration && std::abs(cur_rmse - prev_rmse) >= relative_rmse) {
     Eigen::Matrix4d cur_transformation;
 
     std::vector<size_t> source_indices;
@@ -167,7 +167,7 @@ std::tuple<std::vector<size_t>, std::vector<size_t>, double> Registration::find_
     target_kdtree.SearchKNN<Eigen::Vector3d>(source_for_icp_.points_[i], 1, cur_indices, cur_distances);
 
     // Discard match points pair if distance is bigger than threshold
-    if (cur_distances[i] <= threshold) {
+    if (cur_distances[0] <= threshold) {
       source_indices.push_back(i);
       target_indices.push_back(cur_indices[0]);
     }
@@ -261,10 +261,42 @@ Eigen::Matrix4d Registration::get_lm_icp_registration(std::vector<size_t> source
   std::vector<double> transformation_arr(6, 0.0);
   int num_points = source_indices.size();
 
+  ceres::Problem problem;
+  ceres::Solver::Summary summary;
+
   // For each point....
   for( int i = 0; i < num_points; i++ )
   {
-    
+    ceres::CostFunction* cost_function = PointDistance::Create(
+      source_for_icp_.points_[source_indices[i]],
+      target_.points_[target_indices[i]]
+    );
+
+    problem.AddResidualBlock(
+      cost_function,
+      nullptr,
+      &transformation_arr[0]
+    );
+  }
+
+  ceres::Solve(options, &problem, &summary);
+
+  // Compute rotation matrix
+  // Eigen::AngleAxisd xAngle(transformation_arr[0], Eigen::Vector3d::UnitX());
+  // Eigen::AngleAxisd yAngle(transformation_arr[1], Eigen::Vector3d::UnitY());
+  // Eigen::AngleAxisd zAngle(transformation_arr[2], Eigen::Vector3d::UnitZ());
+  // Eigen::Quaternion<double> q = xAngle * yAngle * zAngle;
+  // Eigen::Matrix3d rotation = q.matrix();
+
+  // Compute rotation matrix
+  Eigen::Matrix3d rotation = open3d::geometry::PointCloud::GetRotationMatrixFromXYZ({transformation_arr[0], transformation_arr[1], transformation_arr[2]});
+  
+  for (int row = 0; row < 3; row++) {
+    for (int col = 0; col < 3; col++) {
+      transformation(row, col) = rotation(row, col);
+    }
+
+    transformation(row, 3) = transformation_arr[3 + row];
   }
 
   return transformation;
