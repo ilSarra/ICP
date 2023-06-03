@@ -18,13 +18,15 @@ struct PointDistance
 
   template<typename T>
   bool operator()(const T* const transformation, T* residuals) const {
-    T p[3];
+    T p_original[3];
     
-    p[0] = (T)source[0];
-    p[1] = (T)source[1];
-    p[2] = (T)source[2];
+    p_original[0] = (T)source[0];
+    p_original[1] = (T)source[1];
+    p_original[2] = (T)source[2];
 
-    ceres::AngleAxisRotatePoint(transformation, p, p);
+    T p[3];
+
+    ceres::AngleAxisRotatePoint(transformation, p_original, p);
 
     p[0] += transformation[3];
     p[1] += transformation[4];
